@@ -50,19 +50,6 @@ logger = logging.getLogger(__name__)
 
 
 class Payload(object):
-    """
-    Represents a payload object that contains information about a database change event.
-
-    Attributes:
-        tg_op (str): The type of operation that triggered the event (e.g. INSERT, UPDATE, DELETE).
-        table (str): The name of the table that was affected by the event.
-        schema (str): The name of the schema that contains the table.
-        old (dict): The old values of the row that was affected by the event (for UPDATE and DELETE operations).
-        new (dict): The new values of the row that was affected by the event (for INSERT and UPDATE operations).
-        xmin (int): The transaction ID of the event.
-        indices (List[str]): The indices of the affected rows (for UPDATE and DELETE operations).
-    """
-
     __slots__ = ("tg_op", "table", "schema", "old", "new", "xmin", "indices")
 
     def __init__(
@@ -93,31 +80,31 @@ class Payload(object):
     def foreign_key_constraint(self, model) -> dict:
         """
         {
-            'public.customer': {  referred table with a fully qualified name
+            'public.customer': [{  referred table with a fully qualified name
                 'local': 'customer_id',
                 'remote': 'id',
                 'value': 1
-            },
-            'public.group': {  referred table with a fully qualified name
+            }],
+            'public.group': [{  referred table with a fully qualified name
                 'local': 'group_id',
                 'remote': 'id',
                 'value': 1
-            }
+            }]
         }
         """
         constraints: dict = {}
         for foreign_key in model.foreign_keys:
             referred_table: str = str(foreign_key.constraint.referred_table)
-            constraints.setdefault(referred_table, {})
+            constraints.setdefault(referred_table, [])
             if foreign_key.constraint.column_keys:
                 if foreign_key.constraint.column_keys[0] in self.data:
-                    constraints[referred_table] = {
+                    constraints[referred_table].append({
                         "local": foreign_key.constraint.column_keys[0],
                         "remote": foreign_key.column.name,
                         "value": self.data[
                             foreign_key.constraint.column_keys[0]
                         ],
-                    }
+                    })
         return constraints
 
 
@@ -422,22 +409,6 @@ class Base(object):
         limit: Optional[int] = None,
         offset: Optional[int] = None,
     ) -> sa.sql.Select:
-        """
-        Returns a SQLAlchemy Select statement that selects changes from a logical replication slot.
-
-        Args:
-            slot_name (str): The name of the logical replication slot to read from.
-            func (sa.sql.functions._FunctionGenerator): The function to use to read from the slot.
-            txmin (Optional[int], optional): The minimum transaction ID to read from. Defaults to None.
-            txmax (Optional[int], optional): The maximum transaction ID to read from. Defaults to None.
-            upto_lsn (Optional[int], optional): The maximum LSN to read up to. Defaults to None.
-            upto_nchanges (Optional[int], optional): The maximum number of changes to read. Defaults to None.
-            limit (Optional[int], optional): The maximum number of rows to return. Defaults to None.
-            offset (Optional[int], optional): The number of rows to skip before returning. Defaults to None.
-
-        Returns:
-            sa.sql.Select: A SQLAlchemy Select statement that selects changes from the logical replication slot.
-        """
         filters: list = []
         statement: sa.sql.Select = sa.select(
             [sa.column("xid"), sa.column("data")]
